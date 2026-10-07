@@ -130,11 +130,16 @@ main:focus { outline: none; }
 .price strong { color: var(--ink); }
 
 /* villa detail */
-.villa-hero { position: relative; height: 68svh; min-height: 380px; color: var(--cream); overflow: hidden; background: var(--stone); }
-.villa-hero > img, .villa-hero > .ph { width: 100%; height: 100%; object-fit: cover; }
+/* Villa photos are square with text panels, so the cover is shown whole */
+.villa-hero { position: relative; height: min(100vw, 78svh); overflow: hidden; background: var(--stone); }
+.villa-hero > img { width: 100%; height: 100%; object-fit: contain; }
+.villa-hero > .ph { width: 100%; height: 100%; }
 .villa-hero > .ph span { display: none; }
-.villa-hero__text { position: absolute; left: 16px; right: 16px; bottom: 1.6rem; max-width: 1120px; margin: 0 auto; }
-.villa-hero__text h1 { color: var(--cream); margin: 0; }
+.villa-hero { margin-top: calc(4.2rem + env(safe-area-inset-top, 0px)); }
+.back-link { display: inline-block; margin-bottom: 1rem; color: var(--muted); text-decoration: none; font-size: .9rem; }
+.back-link:hover { color: var(--stone); }
+.villa-intro { padding-bottom: 1rem; }
+.villa-intro h1 { margin-bottom: .6rem; }
 .back {
   position: absolute; left: 16px; top: calc(4.6rem + env(safe-area-inset-top, 0px));
   width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;

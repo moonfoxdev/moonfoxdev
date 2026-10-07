@@ -27,11 +27,14 @@
   }
 
   function facts(v) {
-    return `<ul class="facts">
-      <li><strong>${esc(v.guests)}</strong> guests</li>
-      <li><strong>${esc(v.bedrooms)}</strong> bedrooms</li>
-      <li><strong>${esc(v.bathrooms)}</strong> baths</li>
-    </ul>`;
+    const plural = (n, word) => `<strong>${esc(n)}</strong> ${word}${n === 1 ? "" : "s"}`;
+    const items = [
+      v.guests && plural(v.guests, "guest"),
+      v.bedrooms && plural(v.bedrooms, "bedroom"),
+      v.bathrooms && plural(v.bathrooms, "bath"),
+      v.highlight && esc(v.highlight),
+    ].filter(Boolean);
+    return `<ul class="facts">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
   }
 
   function priceLine(v) {
@@ -119,15 +122,12 @@
       return `
       <section class="villa-hero">
         ${coverImg(v)}
-        <div class="hero__shade"></div>
-        <a href="#/villas" class="back" aria-label="Back to villas">‹</a>
-        <div class="villa-hero__text">
-          <p class="eyebrow eyebrow--light">${esc(v.subtitle)}</p>
-          <h1>${esc(v.name)}</h1>
-        </div>
       </section>
 
-      <section class="section">
+      <section class="section villa-intro">
+        <a href="#/villas" class="back-link">‹ All villas</a>
+        <p class="eyebrow">${esc(v.subtitle)}</p>
+        <h1>${esc(v.name)}</h1>
         ${facts(v)}
         <p class="lead">${esc(v.description)}</p>
       </section>
@@ -165,7 +165,7 @@
             .map(
               (v) => `<label class="pick">
                 <input type="radio" name="villa" value="${v.id}" ${v.id === selected ? "checked" : ""} />
-                <span><strong>${esc(v.name)}</strong><small>${esc(v.subtitle)}</small></span>
+                <span><strong>${esc(v.subtitle)}</strong><small>${esc(v.name)}</small></span>
               </label>`
             )
             .join("")}
@@ -255,7 +255,7 @@
       const msg = [
         `Hello JÉEN, I'd like to request a stay.`,
         ``,
-        `Villa: ${v.name}`,
+        `Villa: ${v.subtitle} – ${v.name}`,
         `Dates: ${d.checkin} → ${d.checkout} (${n} night${n > 1 ? "s" : ""})`,
         `Guests: ${d.guests}`,
         `Name: ${d.name.trim()}`,
@@ -268,7 +268,7 @@
       if (via === "whatsapp") {
         window.open(`https://wa.me/${contact.whatsapp}?text=${encodeURIComponent(msg)}`, "_blank");
       } else if (via === "email") {
-        location.href = `mailto:${contact.email}?subject=${encodeURIComponent(`Booking request – ${v.name}`)}&body=${encodeURIComponent(msg)}`;
+        location.href = `mailto:${contact.email}?subject=${encodeURIComponent(`Booking request – ${v.subtitle}`)}&body=${encodeURIComponent(msg)}`;
       } else {
         const open = () => window.open(`https://ig.me/m/${contact.instagram}`, "_blank");
         if (navigator.clipboard) {
@@ -375,7 +375,7 @@
 
   const topbar = document.getElementById("topbar");
   function onScroll() {
-    topbar.classList.toggle("is-solid", window.scrollY > 40 || !["home", "villa"].includes(document.body.dataset.route));
+    topbar.classList.toggle("is-solid", window.scrollY > 40 || document.body.dataset.route !== "home");
   }
 
   window.addEventListener("hashchange", render);

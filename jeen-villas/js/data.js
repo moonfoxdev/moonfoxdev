@@ -28,47 +28,55 @@ window.JEEN = {
   villas: [
     {
       id: "villa-1",
-      name: "Villa 1",
-      subtitle: "Mountain view villa",
+      name: "The Family Villa",
+      subtitle: "Villa 1",
       description:
-        "A private retreat facing the ridge. Wake to the light moving across the rock face and end the day under a sky full of stars.",
-      guests: 6, // TODO: confirm
-      bedrooms: 3, // TODO: confirm
-      bathrooms: 3, // TODO: confirm
+        "Spacious, serene and made for togetherness. Three bedrooms around a private pool with a waterfall feature, an open living room and a patio for long evenings outside.",
+      guests: null, // TODO: maximum number of guests
+      bedrooms: 3,
+      bathrooms: 4,
+      highlight: "Private pool",
       pricePerNight: null, // TODO: e.g. 1500 (shown as "From AED 1,500 / night")
       currency: "AED",
       amenities: [
-        "Private pool",
-        "Mountain views",
-        "Outdoor seating & firepit",
-        "Fully equipped kitchen",
-        "Free parking",
-        "Wi-Fi",
+        "Private swimming pool with waterfall feature",
+        "Master bedroom with king bed and pool view",
+        "Two bedrooms with twin single beds",
+        "Premium linens and spacious wardrobes",
+        "Modern bathrooms with premium fittings",
+        "Open living and dining room",
+        "Outdoor patio with shaded pergola",
+        "Built-in grill for evening gatherings",
+        "Fully equipped kitchen with induction cooktop",
+        "Refrigerator and washing machine",
       ],
-      photos: [
-        // "01.jpg", "02.jpg", "03.jpg"
-      ],
+      photos: ["01.jpg", "02.jpg", "03.jpg", "04.jpg", "05.jpg", "06.jpg", "07.jpg", "08.jpg"],
     },
     {
       id: "villa-3",
-      name: "Villa 3",
-      subtitle: "Garden villa",
+      name: "Your Private Escape",
+      subtitle: "Villa 3",
       description:
-        "Calm, open and close to the land. Space to gather with family and friends, with the mountain as your backdrop.",
-      guests: 6, // TODO: confirm
-      bedrooms: 3, // TODO: confirm
-      bathrooms: 3, // TODO: confirm
-      pricePerNight: null,
+        "Comfort, privacy and memories. A one-bedroom hideaway for two, with a private jacuzzi and an outdoor area made to relax and unwind.",
+      guests: 2,
+      bedrooms: 1,
+      bathrooms: 1,
+      highlight: "Private jacuzzi",
+      pricePerNight: null, // TODO
       currency: "AED",
       amenities: [
-        "Private pool",
-        "Garden & terrace",
-        "BBQ area",
-        "Fully equipped kitchen",
-        "Free parking",
-        "Wi-Fi",
+        "Private jacuzzi",
+        "King size bed",
+        "Walk-in rain shower",
+        "Premium towels provided",
+        "Air conditioning",
+        "Smart TV",
+        "Mini fridge",
+        "Tea & coffee making facilities",
+        "Outdoor seating under a shaded pergola",
+        "Built-in grill",
       ],
-      photos: [],
+      photos: ["01.jpg", "02.jpg", "03.jpg", "04.jpg", "05.jpg", "06.jpg"],
     },
   ],
 };
