@@ -60,6 +60,7 @@
     home() {
       return `
       <section class="hero">
+        <img class="hero__backdrop" src="assets/brand/hero-backdrop.jpg" alt="" aria-hidden="true" />
         <img class="hero__logo" src="${HERO}" alt="JÉEN" />
         <div class="hero__content">
           <h1 class="visually-hidden">JÉEN Villas</h1>

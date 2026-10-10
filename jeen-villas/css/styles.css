@@ -10,6 +10,11 @@
   --ink: #1f2624;
   --muted: #6b726f;
   --line: #e4dccb;
+  /* sampled from the edges of the brand image */
+  --hero-sky: #5b7680;
+  --hero-mid: #4a5c60;
+  --hero-ground: #3e443b;
+  --hero-shade: rgba(28, 33, 29, .7);
   --serif: "Cormorant Garamond", "Times New Roman", serif;
   --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --r: 14px;
@@ -88,10 +93,28 @@ main:focus { outline: none; }
 }
 @media (max-width: 819px) { .topbar__nav { display: none; } }
 
-/* hero — the brand image already carries the wordmark, so it's shown whole */
-.hero { background: var(--stone); color: var(--cream); text-align: center; padding-bottom: 3rem; }
-.hero__logo { width: 100%; max-width: min(100%, 78svh); aspect-ratio: 1; object-fit: cover; margin: 0 auto; }
-@media (min-width: 820px) { .hero { padding-top: 4.2rem; } .hero__logo { border-radius: 4px; } }
+/* hero — the brand image already carries the wordmark, so it's shown whole.
+   A blurred copy of the same image fills the section and the image's edges are
+   feathered into it, so the logo sits in its own sky and ground with no hard box. */
+.hero {
+  position: relative; isolation: isolate; overflow: hidden;
+  color: var(--cream); text-align: center; padding-bottom: 3rem;
+  background: linear-gradient(180deg, var(--hero-sky) 0%, var(--hero-mid) 50%, var(--hero-ground) 100%);
+}
+.hero__backdrop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; transform: scale(1.1); }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, transparent 45%, var(--hero-shade) 100%); }
+.hero__logo {
+  width: 100%; max-width: min(100%, 78svh); aspect-ratio: 1; object-fit: cover; margin: 0 auto;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent), linear-gradient(180deg, transparent, #000 9%, #000 86%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent), linear-gradient(180deg, transparent, #000 9%, #000 86%, transparent);
+  mask-composite: intersect;
+}
+@media (max-width: 819px) {
+  /* Full width on phones: only the bottom edge needs to melt into the ground */
+  .hero__logo { -webkit-mask-image: linear-gradient(180deg, #000 80%, transparent); mask-image: linear-gradient(180deg, #000 80%, transparent); }
+}
+@media (min-width: 820px) { .hero { padding-top: 4.2rem; } }
 .hero__content { padding: 1.6rem 16px 0; }
 .hero__tag { font-family: var(--serif); font-size: clamp(1.3rem, 4vw, 1.7rem); margin: 0 0 1.6rem; font-style: italic; }
 .hero__cta { display: flex; gap: .8rem; justify-content: center; flex-wrap: wrap; }
