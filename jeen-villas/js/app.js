@@ -17,6 +17,7 @@
   const findVilla = (id) => villas.find((v) => v.id === id);
   const money = (n, cur) => `${cur} ${Number(n).toLocaleString("en-US")}`;
   const igUrl = `https://instagram.com/${contact.instagram}`;
+  const tourUrl = (v) => `https://my.matterport.com/show/?m=${encodeURIComponent(v.tour)}`;
 
   function toast(msg) {
     const t = document.getElementById("toast");
@@ -47,7 +48,7 @@
     return `<a class="card" href="#/villa/${v.id}">
       <div class="card__img">${coverImg(v)}</div>
       <div class="card__body">
-        <p class="eyebrow">${esc(v.subtitle)}</p>
+        <p class="eyebrow">${esc(v.subtitle)}${v.tour ? ` <span class="chip">3D tour</span>` : ""}</p>
         <h3>${esc(v.name)}</h3>
         ${facts(v)}
         ${priceLine(v)}
@@ -132,6 +133,19 @@
         ${facts(v)}
         <p class="lead">${esc(v.description)}</p>
       </section>
+
+      ${v.tour ? `
+      <section class="section" id="tour">
+        <h2>3D tour</h2>
+        <div class="tour" data-src="${esc(tourUrl(v))}&play=1&qs=1">
+          ${coverImg(v)}
+          <button class="tour__start" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9zM4 7.5 12 12l8-4.5M12 12v9"/></svg>
+            Walk through ${esc(v.subtitle)} in 3D
+          </button>
+        </div>
+        <a class="link tour__out" href="${esc(tourUrl(v))}" target="_blank" rel="noopener">Open the tour full screen ↗</a>
+      </section>` : ""}
 
       <section class="section">
         <h2>Gallery</h2>
@@ -307,6 +321,21 @@
     touchX = null;
   });
 
+  // The Matterport viewer is heavy, so it only loads when the guest asks for it.
+  function bindTour() {
+    const box = app.querySelector(".tour");
+    if (!box) return;
+    box.querySelector(".tour__start").addEventListener("click", () => {
+      const frame = document.createElement("iframe");
+      frame.src = box.dataset.src;
+      frame.title = "3D tour";
+      frame.allow = "fullscreen; xr-spatial-tracking";
+      frame.allowFullscreen = true;
+      box.replaceChildren(frame);
+      box.classList.add("is-live");
+    });
+  }
+
   function bindGallery() {
     const items = [...app.querySelectorAll(".gallery__item")];
     if (!items.length) return;
@@ -370,6 +399,7 @@
     window.scrollTo(0, 0);
     bindBooking();
     bindGallery();
+    bindTour();
     bindInstall();
     onScroll();
   }

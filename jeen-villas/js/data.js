@@ -28,6 +28,7 @@ window.JEEN = {
   villas: [
     {
       id: "villa-1",
+      tour: "xHiJJNx9nob", // Matterport 3D tour ID (from my.matterport.com/show/?m=...)
       name: "The Family Villa",
       subtitle: "Villa 1",
       description:
@@ -54,6 +55,7 @@ window.JEEN = {
     },
     {
       id: "villa-3",
+      tour: "Y6P8ZuSc916", // Matterport 3D tour ID (from my.matterport.com/show/?m=...)
       name: "Your Private Escape",
       subtitle: "Villa 3",
       description:

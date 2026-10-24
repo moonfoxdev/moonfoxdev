@@ -32,3 +32,8 @@ repo Settings → Pages → deploy from branch, then open `/jeen-villas/`.
 On a phone, open the site and choose **Add to Home Screen** to install it like an app.
 
 After changing files on a live site, bump `VERSION` in `sw.js` so phones pick up the update.
+
+## 3D tours
+Each villa can have a Matterport tour: set `tour` in `js/data.js` to the ID
+after `?m=` in the tour link. Villa 1 uses `xHiJJNx9nob` and Villa 3 uses
+`Y6P8ZuSc916`; swap them there if they are the wrong way round.
