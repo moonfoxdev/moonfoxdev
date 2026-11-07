@@ -1,12 +1,19 @@
 // Offline support: app shell is pre-cached; everything else (villa photos,
 // fonts) is cached the first time it loads. Bump VERSION after editing files.
-const VERSION = "jeen-v4";
+const VERSION = "jeen-v5";
 const SHELL = [
   "./",
   "index.html",
   "css/styles.css",
   "js/data.js",
   "js/app.js",
+  "js/scene.js",
+  "js/terrain.js",
+  "js/villa-models.js",
+  "js/tour-overlay.js",
+  "js/vendor/three.module.min.js",
+  "js/vendor/addons/controls/OrbitControls.js",
+  "js/vendor/addons/renderers/CSS2DRenderer.js",
   "manifest.webmanifest",
   "assets/brand/hero.webp",
   "assets/brand/hero-backdrop.jpg",

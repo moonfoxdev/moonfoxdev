@@ -23,8 +23,31 @@ window.JEEN = {
     phone: "",
   },
 
+  // ── 3D landscape on the home page ─────────────────────────
+  terrain: {
+    // A greyscale PNG (black = low, white = high) to use instead of the
+    // generated mountains, e.g. "assets/terrain/heightmap.png".
+    // The image covers the whole terrain square; its top edge is the back
+    // of the scene (behind the villas).
+    heightmap: null,
+    heightScale: 90, // height in metres of pure white in the heightmap
+    size: 900, // width of the terrain square in metres (villa positions use the same units)
+    seed: 7, // change to get a different generated mountain range
+    quality: "auto", // "auto", "high" or "low" (low: no shadows, coarser terrain)
+  },
+
   // Photos: drop image files into assets/villas/<villa-id>/ and list
   // their file names in `photos`. The first photo is used as the cover.
+  //
+  // On the 3D map:
+  //  available – false greys the villa out and it can't be selected
+  //  map       – { x, z, rotation } position in metres from the middle of the
+  //              terrain: x to the right, z towards the viewer (negative z
+  //              is towards the mountains); rotation in degrees.
+  //              Optional: pool: "pool" | "jacuzzi" | null (otherwise guessed
+  //              from the amenities), scale for a .glb that isn't in metres.
+  //  model     – path to a .glb to show instead of the built-in model,
+  //              e.g. "assets/models/villa-1.glb"
   villas: [
     {
       id: "villa-1",
@@ -52,6 +75,27 @@ window.JEEN = {
         "Refrigerator and washing machine",
       ],
       photos: ["01.jpg", "02.jpg", "03.jpg", "04.jpg", "05.jpg", "06.jpg", "07.jpg", "08.jpg"],
+      available: true,
+      map: { x: -40, z: 10, rotation: 18 },
+      model: null,
+    },
+    {
+      id: "villa-2",
+      tour: null,
+      name: "Villa 2",
+      subtitle: "Villa 2",
+      description: "",
+      guests: null,
+      bedrooms: null,
+      bathrooms: null,
+      highlight: null,
+      pricePerNight: null,
+      currency: "AED",
+      amenities: [],
+      photos: [],
+      available: false, // shown on the 3D map only, greyed out
+      map: { x: 0, z: -16, rotation: 0 },
+      model: null,
     },
     {
       id: "villa-3",
@@ -79,6 +123,9 @@ window.JEEN = {
         "Built-in grill",
       ],
       photos: ["01.jpg", "02.jpg", "03.jpg", "04.jpg", "05.jpg", "06.jpg"],
+      available: true,
+      map: { x: 40, z: 8, rotation: -16 },
+      model: null,
     },
   ],
 };

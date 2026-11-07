@@ -1,7 +1,8 @@
 (function () {
   "use strict";
 
-  const { brand, contact, villas } = window.JEEN;
+  const { brand, contact, villas, terrain = {} } = window.JEEN;
+  const bookable = villas.filter((v) => v.available !== false);
   const app = document.getElementById("app");
   const HERO = "assets/brand/hero.webp";
 
@@ -56,10 +57,9 @@
     </a>`;
   }
 
-  // ── views ──────────────────────────────────────────────────
-  const views = {
-    home() {
-      return `
+  // The original image hero, still used when WebGL isn't available.
+  function staticHero() {
+    return `
       <section class="hero">
         <img class="hero__backdrop" src="assets/brand/hero-backdrop.jpg" alt="" aria-hidden="true" />
         <img class="hero__logo" src="${HERO}" alt="JÉEN" />
@@ -71,9 +71,39 @@
             <a href="#/book" class="btn btn--ghost">Request a stay</a>
           </div>
         </div>
-      </section>
+      </section>`;
+  }
 
-      <section class="section intro">
+  // The 3D landscape hero (js/scene.js renders into .hero3d__stage).
+  function landscapeHero() {
+    return `
+      <section class="hero3d" id="hero3d" aria-label="JÉEN Villas">
+        <div class="hero3d__stage"></div>
+        <div class="hero3d__brand">
+          <h1 class="hero3d__logo">${esc(brand.name)}<span class="visually-hidden"> Villas</span></h1>
+          <p class="hero__tag">${esc(brand.tagline)}</p>
+        </div>
+        <div class="hero3d__bottom">
+          <div class="hero__cta">
+            <a href="#/villas" class="btn btn--light">Explore villas</a>
+            <a href="#/book" class="btn btn--ghost">Request a stay</a>
+          </div>
+          <p class="hero3d__hint">Drag to look around · Select a villa</p>
+        </div>
+        <div class="hero3d__loader" aria-hidden="true">
+          <span class="hero3d__loader-mark">${esc(brand.name)}</span>
+          <span class="hero3d__progress"><i></i></span>
+        </div>
+      </section>`;
+  }
+
+  // ── views ──────────────────────────────────────────────────
+  const views = {
+    home() {
+      return `
+      ${webglOK() ? landscapeHero() : staticHero()}
+
+      <section class="section intro" id="intro">
         <p class="eyebrow">Welcome</p>
         <p class="lead">${esc(brand.intro)}</p>
         ${brand.location ? `<p class="muted">${esc(brand.location)}</p>` : ""}
@@ -84,7 +114,7 @@
           <h2>The villas</h2>
           <a href="#/villas" class="link">View all</a>
         </div>
-        <div class="grid">${villas.map(villaCard).join("")}</div>
+        <div class="grid">${bookable.map(villaCard).join("")}</div>
       </section>
 
       <section class="section band">
@@ -105,7 +135,7 @@
         <p class="eyebrow">Stay with us</p>
         <h1>Our villas</h1>
       </section>
-      <section class="section"><div class="grid">${villas.map(villaCard).join("")}</div></section>`;
+      <section class="section"><div class="grid">${bookable.map(villaCard).join("")}</div></section>`;
     },
 
     villa(id) {
@@ -137,6 +167,10 @@
       ${v.tour ? `
       <section class="section" id="tour">
         <h2>3D tour</h2>
+        <button class="btn tour__enter" type="button" data-tour="${esc(v.id)}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9zM4 7.5 12 12l8-4.5M12 12v9"/></svg>
+          Enter virtual tour
+        </button>
         <div class="tour" data-src="${esc(tourUrl(v))}&play=1&qs=1">
           ${coverImg(v)}
           <button class="tour__start" type="button">
@@ -158,13 +192,14 @@
       </section>
 
       <div class="sticky-book">
-        ${priceLine(v)}
-        <a href="#/book?villa=${v.id}" class="btn">Request to book</a>
+        ${v.available === false
+          ? `<p class="price">Currently unavailable</p><a href="#/villas" class="btn btn--outline">See other villas</a>`
+          : `${priceLine(v)}<a href="#/book?villa=${v.id}" class="btn">Request to book</a>`}
       </div>`;
     },
 
     book(params) {
-      const selected = params.get("villa") || villas[0].id;
+      const selected = bookable.some((v) => v.id === params.get("villa")) ? params.get("villa") : bookable[0]?.id;
       const today = new Date().toISOString().slice(0, 10);
       return `
       <section class="section page-head">
@@ -176,7 +211,7 @@
       <form class="section form" id="book-form" novalidate>
         <fieldset class="villa-pick">
           <legend>Villa</legend>
-          ${villas
+          ${bookable
             .map(
               (v) => `<label class="pick">
                 <input type="radio" name="villa" value="${v.id}" ${v.id === selected ? "checked" : ""} />
@@ -323,6 +358,14 @@
 
   // The Matterport viewer is heavy, so it only loads when the guest asks for it.
   function bindTour() {
+    const enter = app.querySelector(".tour__enter");
+    if (enter) {
+      enter.addEventListener("click", () => {
+        import("./tour-overlay.js")
+          .then((m) => m.openTour(findVilla(enter.dataset.tour)))
+          .catch(() => window.open(tourUrl(findVilla(enter.dataset.tour)), "_blank", "noopener"));
+      });
+    }
     const box = app.querySelector(".tour");
     if (!box) return;
     box.querySelector(".tour__start").addEventListener("click", () => {
@@ -377,8 +420,62 @@
     };
   }
 
+  // ── 3D landscape (home hero) ───────────────────────────────
+  let webglState = null;
+  function webglOK() {
+    if (webglState === null) {
+      try {
+        const c = document.createElement("canvas");
+        const gl = c.getContext("webgl2") || c.getContext("webgl");
+        webglState = !!gl && "noModule" in HTMLScriptElement.prototype;
+        gl?.getExtension("WEBGL_lose_context")?.loseContext();
+      } catch {
+        webglState = false;
+      }
+    }
+    return webglState;
+  }
+
+  let scene3d = null;
+  let sceneToken = 0;
+  function unmountHero() {
+    sceneToken++;
+    scene3d?.unmount();
+    scene3d = window.JEEN_SCENE = null;
+  }
+  function mountHero() {
+    const host = app.querySelector("#hero3d");
+    if (!host) return;
+    const token = ++sceneToken;
+    const live = () => token === sceneToken;
+    const bar = host.querySelector(".hero3d__progress i");
+    const fallback = (err) => {
+      if (err) console.warn("JÉEN: 3D landscape unavailable, showing the image hero.", err);
+      webglState = false;
+      if (live() && host.isConnected) host.outerHTML = staticHero();
+    };
+    import("./scene.js")
+      .then((m) =>
+        m.mountScene(host, {
+          villas,
+          settings: terrain,
+          ui: { toast, facts, priceLine, coverImg, money },
+          onProgress: (p) => bar && (bar.style.transform = `scaleX(${p})`),
+          isCancelled: () => !live(),
+        })
+      )
+      .then((ctrl) => {
+        if (!ctrl) return;
+        if (!live()) return ctrl.unmount();
+        scene3d = ctrl;
+        window.JEEN_SCENE = ctrl; // handy for debugging in the console
+      })
+      .catch(fallback);
+  }
+
   // ── router ─────────────────────────────────────────────────
   function render() {
+    unmountHero();
     const raw = location.hash.replace(/^#/, "") || "/";
     const [path, query = ""] = raw.split("?");
     const params = new URLSearchParams(query);
@@ -401,6 +498,7 @@
     bindGallery();
     bindTour();
     bindInstall();
+    if (route === "home") mountHero();
     onScroll();
   }
 
