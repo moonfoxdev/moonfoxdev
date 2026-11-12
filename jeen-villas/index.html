@@ -19,6 +19,19 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
+  <!-- Three.js for the 3D landscape (js/scene.js). It is vendored in js/vendor/
+       so the site has no runtime CDN dependency and works offline as a PWA.
+       To load it from jsdelivr instead, point these at
+       https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js and
+       https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/ -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./js/vendor/three.module.min.js",
+        "three/addons/": "./js/vendor/addons/"
+      }
+    }
+  </script>
 </head>
 <body>
   <header class="topbar" id="topbar">
