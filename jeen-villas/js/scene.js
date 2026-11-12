@@ -10,16 +10,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { createTerrain, createScatter } from "./terrain.js";
-import { loadVillaModel, applyUnavailableLook, createHighlight } from "./villa-models.js";
+import { Sky } from "three/addons/objects/Sky.js";
+import { loadVillaModel, applyUnavailableLook, createHighlight, animateWater } from "./villa-models.js";
 import { openTour, closeTour, createVillaPanel } from "./tour-overlay.js";
 
-const SKY = {
-  top: "#3d5d6b", // slate, as in the brand image
-  horizon: "#e7c9a1", // warm late-afternoon haze
-  ground: "#b49c80",
-  fog: "#cdb497",
-  sun: "#ffcf96",
-};
+// Late-afternoon light: sun ~11° above the horizon, low in the west.
+const SUN = { elevation: 15, azimuth: -118 }; // degrees; azimuth 0 = towards the viewer (+z)
+const HAZE = "#c6b9a4"; // aerial-perspective haze over distant ridges
 const GOLD = "#e3b766";
 const FLY_MS = 1200;
 const INTRO_MS = 5200;
@@ -35,46 +32,19 @@ const lerpAngle = (a, b, t) => {
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+// Physically based sky (Preetham model) with a warm, slightly dusty atmosphere.
 function makeSky(sunDir) {
-  const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    fog: false,
-    uniforms: {
-      top: { value: new THREE.Color(SKY.top) },
-      horizon: { value: new THREE.Color(SKY.horizon) },
-      ground: { value: new THREE.Color(SKY.ground) },
-      sunColor: { value: new THREE.Color(SKY.sun) },
-      sunDir: { value: sunDir.clone().normalize() },
-    },
-    vertexShader: /* glsl */ `
-      varying vec3 vDir;
-      void main() {
-        vDir = normalize(position);
-        vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        gl_Position = p.xyww; // always on the far plane
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform vec3 top, horizon, ground, sunColor, sunDir;
-      varying vec3 vDir;
-      void main() {
-        vec3 d = normalize(vDir);
-        float h = d.y;
-        vec3 col = h > 0.0
-          ? mix(horizon, top, pow(smoothstep(0.0, 0.62, h), 0.75))
-          : mix(horizon, ground, smoothstep(0.0, -0.25, h));
-        float s = max(dot(d, normalize(sunDir)), 0.0);
-        col += sunColor * (pow(s, 600.0) * 1.6 + pow(s, 24.0) * 0.28 + pow(s, 4.0) * 0.08);
-        gl_FragColor = vec4(col, 1.0);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }`,
-  });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 16), mat);
-  mesh.name = "sky";
-  mesh.frustumCulled = false;
-  mesh.renderOrder = -1;
-  return mesh;
+  const sky = new Sky();
+  sky.name = "sky";
+  sky.scale.setScalar(2000);
+  sky.frustumCulled = false;
+  const u = sky.material.uniforms;
+  u.turbidity.value = 7;
+  u.rayleigh.value = 1.4;
+  u.mieCoefficient.value = 0.006;
+  u.mieDirectionalG.value = 0.86;
+  u.sunPosition.value.copy(sunDir);
+  return sky;
 }
 
 function disposeObject(root) {
@@ -118,7 +88,7 @@ export async function mountScene(host, o) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.9;
   renderer.shadowMap.enabled = shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = "hero3d__canvas";
@@ -129,7 +99,7 @@ export async function mountScene(host, o) {
   labels.domElement.className = "hero3d__labels";
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY.fog, 220, 950);
+  scene.fog = new THREE.FogExp2(HAZE, 0.00105);
   const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 2500);
 
   let disposed = false;
@@ -160,7 +130,8 @@ export async function mountScene(host, o) {
   // ── terrain ──────────────────────────────────────────────
   const terrain = await createTerrain({
     size: settings.size || 900,
-    segments: low ? 140 : 280,
+    segments: low ? 180 : 360,
+    detail: low ? 0.6 : 1,
     heightmap: settings.heightmap || null,
     heightScale: settings.heightScale || 90,
     seed: settings.seed ?? 7,
@@ -169,7 +140,7 @@ export async function mountScene(host, o) {
   });
   if (isCancelled()) return bail();
   scene.add(terrain.mesh);
-  scene.add(createScatter(terrain.heightAt, { size: terrain.size, seed: settings.seed ?? 7, pads, count: low ? 160 : 380, shadows }));
+  scene.add(createScatter(terrain.heightAt, { size: terrain.size, seed: settings.seed ?? 7, pads, count: low ? 300 : 800, shadows }));
   onProgress(0.65);
 
   // ── light & sky ──────────────────────────────────────────
@@ -179,8 +150,12 @@ export async function mountScene(host, o) {
   centroid.y = terrain.heightAt(centroid.x, centroid.z);
   const spread = placed.reduce((r, v, i) => Math.max(r, Math.hypot(v.map.x - centroid.x, v.map.z - centroid.z) + ringR(models[i])), 30);
 
-  const sunDir = new THREE.Vector3(-0.72, 0.3, 0.36).normalize();
-  const sun = new THREE.DirectionalLight("#ffd4a3", 2.7);
+  const sunDir = new THREE.Vector3().setFromSphericalCoords(
+    1,
+    THREE.MathUtils.degToRad(90 - SUN.elevation),
+    THREE.MathUtils.degToRad(SUN.azimuth)
+  );
+  const sun = new THREE.DirectionalLight("#ffd3a0", 4.2);
   sun.position.copy(centroid).addScaledVector(sunDir, 260);
   sun.target.position.copy(centroid);
   sun.castShadow = shadows;
@@ -188,13 +163,24 @@ export async function mountScene(host, o) {
     const s = spread + 25;
     Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 50, far: 520 });
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.bias = -0.0004;
-    sun.shadow.normalBias = 0.6;
+    sun.shadow.bias = -0.0003;
+    sun.shadow.normalBias = 0.4;
+    sun.shadow.radius = 3;
   }
   scene.add(sun, sun.target);
-  scene.add(new THREE.HemisphereLight("#bcd0d8", "#86705a", 1.05));
   const sky = makeSky(sunDir);
   scene.add(sky);
+  // Image-based light from the same sky: soft blue fill in the shadows and
+  // proper reflections in the glazing and the pool.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = new THREE.Scene();
+  envScene.add(makeSky(sunDir));
+  const envRT = pmrem.fromScene(envScene, 0, 1, 5000);
+  envScene.traverse((o) => o.geometry?.dispose());
+  pmrem.dispose();
+  scene.environment = envRT.texture;
+  scene.environmentIntensity = 0.5;
+  scene.add(new THREE.HemisphereLight("#d2d6d6", "#9a8466", 0.45));
 
   // ── villa objects, highlights, labels ────────────────────
   const entries = placed.map((villa, i) => {
@@ -342,6 +328,9 @@ export async function mountScene(host, o) {
     if (k >= 1) {
       const done = tween.done;
       tween = null;
+      // drop any momentum left from the tap that started the flight,
+      // so the camera doesn't drift after it lands
+      controls._sphericalDelta?.set(0, 0, 0);
       controls.enabled = true;
       done?.();
     }
@@ -481,8 +470,28 @@ export async function mountScene(host, o) {
   const clock = new THREE.Clock();
   const groundPad = 3;
 
+  // If the device can't keep up (under ~40 fps over the first couple of
+  // seconds), render at a lower resolution rather than stutter.
+  const perf = { frames: 0, time: 0, steps: 0 };
+  function adaptResolution(rawDt) {
+    if (perf.steps >= 2) return;
+    perf.frames++;
+    perf.time += rawDt;
+    if (perf.frames < 60) return;
+    const fps = perf.frames / perf.time;
+    perf.frames = perf.time = 0;
+    const pr = renderer.getPixelRatio();
+    if (fps < 40 && pr > 1) {
+      renderer.setPixelRatio(Math.max(1, pr * 0.7));
+      layout();
+      perf.steps++;
+    } else perf.steps = 2;
+  }
+
   function frame() {
-    const dt = Math.min(clock.getDelta(), 0.1);
+    const rawDt = clock.getDelta();
+    const dt = Math.min(rawDt, 0.1);
+    if (!tween || tween.ms !== INTRO_MS) adaptResolution(rawDt);
     const t = clock.elapsedTime;
     stepTween(performance.now());
     if (!tween) controls.update(dt);
@@ -501,6 +510,7 @@ export async function mountScene(host, o) {
       e.lift.position.y += (want - e.lift.position.y) * (motion ? 0.15 : 1);
     }
     sky.position.copy(camera.position);
+    if (motion) animateWater(t);
     renderer.render(scene, camera);
     labels.render(scene, camera);
   }
@@ -565,6 +575,7 @@ export async function mountScene(host, o) {
     entries.forEach((e) => e.label.removeFromParent());
     disposeObject(scene);
     scene.clear();
+    envRT.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
     renderer.domElement.remove();

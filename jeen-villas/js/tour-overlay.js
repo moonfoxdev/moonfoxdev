@@ -142,7 +142,8 @@ export function createVillaPanel(host, ui, hooks) {
   function show() {
     if (!villa) return;
     host.classList.add("has-panel");
-    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("is-open")));
+    void el.offsetWidth; // commit the off-screen position so the slide-in animates
+    el.classList.add("is-open");
   }
 
   function open(v) {

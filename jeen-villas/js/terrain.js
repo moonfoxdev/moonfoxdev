@@ -15,6 +15,7 @@
 //  Either way, each villa gets a flat "pad" so it sits level on the ground.
 // ─────────────────────────────────────────────────────────────
 import * as THREE from "three";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 // ── seeded random + 2D simplex noise (after Stefan Gustavson, public domain) ──
 export function rng(seed = 1) {
@@ -91,7 +92,7 @@ function proceduralField(seed) {
     let amp = 0.5, f = 1, sum = 0, prev = 1;
     for (let o = 0; o < oct; o++) {
       let r = 1 - Math.abs(n(x * f, z * f));
-      r *= r;
+      r = Math.pow(r, 1.6);
       sum += r * amp * prev;
       prev = r;
       amp *= 0.5;
@@ -108,9 +109,16 @@ function proceduralField(seed) {
     const front = smoothstep(220, 420, z);
     const mask = Math.max(back, side * 0.85, front * 0.4);
 
-    const crest = ridged(x * 0.0042 + 11, z * 0.0042 - 4);
+    // domain warp: bends the ridges into the irregular, eroded lines of real ranges
+    const wx = x + fbm(x * 0.003 + 5, z * 0.003, 3) * 70;
+    const wz = z + fbm(x * 0.003, z * 0.003 + 9, 3) * 70;
+    const crest = ridged(wx * 0.0042 + 11, wz * 0.0042 - 4);
     const bulk = fbm(x * 0.0025, z * 0.0025, 3) * 0.5 + 0.5;
-    const mountains = Math.pow(mask, 1.5) * (crest * 1.2 + bulk * 0.5) * 115;
+    let mountains = Math.pow(mask, 1.5) * (crest * 0.85 + bulk * 0.85) * 120;
+    // limestone ledges: soft terracing on the higher ground
+    const step = 9, tt = mountains / step;
+    const terraced = (Math.floor(tt) + smoothstep(0.25, 0.75, tt - Math.floor(tt))) * step;
+    mountains += (terraced - mountains) * 0.45 * smoothstep(8, 30, mountains);
 
     // The valley floor: a slow tilt up towards the mountains, soft hills
     // and fine gravelly detail.
@@ -171,15 +179,85 @@ function withPads(field, pads) {
   };
 }
 
-// ── colour by height and slope ──────────────────────────────
+// ── colour by height, slope and hollows ─────────────────────
+// Palette sampled from the Hajar mountains: grey-brown limestone above a
+// dusty gravel valley floor with sparse, dry scrub.
 const C = {
-  sand: new THREE.Color("#cdb38a"),
-  stone: new THREE.Color("#a99578"),
-  scrub: new THREE.Color("#8c8a68"),
-  rock: new THREE.Color("#6a645a"),
-  dark: new THREE.Color("#454842"),
-  crest: new THREE.Color("#8a8073"),
+  gravel: new THREE.Color("#bba98c"),
+  dust: new THREE.Color("#c9b99b"),
+  scrub: new THREE.Color("#8d8a6e"),
+  rock: new THREE.Color("#8f8170"),
+  dark: new THREE.Color("#665d52"),
+  crest: new THREE.Color("#9a9182"),
 };
+
+// Detail added per pixel on the GPU: colour variation, gravel speckle,
+// limestone strata on steep faces and a bump that catches the low sun.
+// Fades out with distance so far slopes don't shimmer.
+const TERRAIN_GLSL = /* glsl */ `
+  varying vec3 vTPos;
+  varying vec3 vTNrm;
+  float tHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+  float tNoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(tHash(i), tHash(i + vec2(1, 0)), u.x), mix(tHash(i + vec2(0, 1)), tHash(i + vec2(1, 1)), u.x), u.y);
+  }
+  float tFbm(vec2 p) {
+    float s = 0.0, a = 0.5;
+    for (int k = 0; k < 4; k++) { s += a * tNoise(p); p = p * 2.07 + 13.1; a *= 0.5; }
+    return s;
+  }
+`;
+
+const TERRAIN_BUMP = /* glsl */ `#include <normal_fragment_maps>
+        {
+          // bump from the slope of a small height field, sampled in world space
+          vec2 q = vTPos.xz;
+          float e = 0.2;
+          #define TH(P) (tFbm((P) * 0.35) * 0.9 * tMid + tNoise((P) * 1.6) * 0.25 * tFine + tFbm(vec2(vTPos.y * 1.6, ((P).x - (P).y) * 0.05)) * tSteep * 1.4 * tMid)
+          float h0 = TH(q);
+          float gx = (TH(q + vec2(e, 0.0)) - h0) / e;
+          float gz = (TH(q + vec2(0.0, e)) - h0) / e;
+          vec3 nW = normalize(vTNrm - vec3(gx, 0.0, gz) * 0.35);
+          vec3 nV = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
+          normal = normalize(mix(normal, nV, tNear));
+        }`;
+
+function terrainMaterial(detail) {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0 });
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uDetail = { value: detail };
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vTPos;\nvarying vec3 vTNrm;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvTPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvTNrm = normalize(mat3(modelMatrix) * objectNormal);");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform float uDetail;\n" + TERRAIN_GLSL)
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        float tDist = length(vTPos - cameraPosition);
+        float tNear = (1.0 - smoothstep(60.0, 420.0, tDist)) * uDetail;
+        // metres covered by one pixel: fine detail fades before it can alias
+        float tPx = length(fwidth(vTPos.xz));
+        float tFine = 1.0 - smoothstep(0.08, 0.3, tPx);
+        float tMid = 1.0 - smoothstep(0.4, 1.4, tPx);
+        float tSteep = smoothstep(0.22, 0.65, 1.0 - vTNrm.y);
+        float tPatch = tFbm(vTPos.xz * 0.045);
+        float tSpeck = tNoise(vTPos.xz * 1.9);
+        float tBands = tFbm(vec2(vTPos.y * 0.9, (vTPos.x + vTPos.z) * 0.012));
+        vec3 tc = diffuseColor.rgb;
+        tc *= mix(0.84, 1.14, tPatch);
+        tc *= mix(1.0, mix(0.86, 1.1, tSpeck), tFine * (1.0 - tSteep));
+        tc *= mix(1.0, mix(0.72, 1.12, tBands), tSteep);
+        diffuseColor.rgb = tc;`
+      )
+      // phones skip the per-pixel bump, the most expensive part
+      .replace("#include <normal_fragment_maps>", detail < 0.8 ? "#include <normal_fragment_maps>" : TERRAIN_BUMP);
+  };
+  mat.customProgramCacheKey = () => "jeen-terrain-" + detail;
+  return mat;
+}
 
 /**
  * @param {object} o
@@ -190,9 +268,10 @@ const C = {
  * @param {number} [o.seed]
  * @param {{x:number,z:number,r:number}[]} [o.pads] flat spots for the villas
  * @param {boolean} [o.shadows]
+ * @param {number} [o.detail]   0…1 strength of the per-pixel surface detail
  */
 export async function createTerrain(o) {
-  const { size = 900, segments = 200, heightmap = null, heightScale = 90, seed = 7, pads = [], shadows = true } = o;
+  const { size = 900, segments = 200, heightmap = null, heightScale = 90, seed = 7, pads = [], shadows = true, detail = 1 } = o;
 
   let base = null;
   if (heightmap) {
@@ -208,38 +287,60 @@ export async function createTerrain(o) {
   const geo = new THREE.PlaneGeometry(size, size, segments, segments);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
-  let maxH = 0;
+  let maxH = -Infinity, minH = Infinity;
   for (let i = 0; i < pos.count; i++) {
     const y = heightAt(pos.getX(i), pos.getZ(i));
     pos.setY(i, y);
     if (y > maxH) maxH = y;
+    if (y < minH) minH = y;
   }
   geo.computeVertexNormals();
+
+  // Hollows (concave spots) are shaded darker: a cheap stand-in for
+  // ambient occlusion that makes gullies and the foot of slopes read.
+  const row = segments + 1;
+  const cell = size / segments;
+  const cavity = new Float32Array(pos.count);
+  for (let iy = 0; iy < row; iy++) {
+    for (let ix = 0; ix < row; ix++) {
+      const i = iy * row + ix;
+      let sum = 0, k = 0;
+      for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-2, -2], [2, 2], [-2, 2], [2, -2]]) {
+        const jx = ix + dx, jy = iy + dy;
+        if (jx < 0 || jy < 0 || jx >= row || jy >= row) continue;
+        sum += pos.getY(jy * row + jx);
+        k++;
+      }
+      cavity[i] = (sum / k - pos.getY(i)) / (cell * 2); // >0 means a hollow
+    }
+  }
 
   const tint = makeSimplex(seed + 99);
   const colors = new Float32Array(pos.count * 3);
   const c = new THREE.Color();
   const nrm = geo.attributes.normal;
+  const span = Math.max(1, maxH - minH);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const t = y / Math.max(1, maxH);
+    const t = (y - minH) / span;
     const slope = 1 - nrm.getY(i); // 0 flat … 1 vertical
-    const patch = tint(x * 0.03, z * 0.03) * 0.5 + 0.5;
+    const patch = tint(x * 0.02, z * 0.02) * 0.5 + 0.5;
 
-    c.copy(C.sand).lerp(C.stone, smoothstep(0.02, 0.18, t));
-    c.lerp(C.scrub, smoothstep(0.55, 0.85, patch) * (1 - smoothstep(0.1, 0.35, t)) * 0.55);
-    c.lerp(C.rock, smoothstep(0.15, 0.45, t));
-    c.lerp(C.dark, smoothstep(0.42, 0.75, t) * 0.85);
-    c.lerp(C.crest, smoothstep(0.82, 1, t) * 0.6);
-    c.lerp(C.dark, smoothstep(0.18, 0.5, slope) * 0.6); // cliffs read as darker rock
+    c.copy(C.gravel).lerp(C.dust, smoothstep(0.4, 0.8, patch) * (1 - smoothstep(0.05, 0.2, t)));
+    c.lerp(C.scrub, smoothstep(0.62, 0.9, 1 - patch) * (1 - smoothstep(0.08, 0.3, t)) * 0.5);
+    c.lerp(C.rock, smoothstep(0.1, 0.35, t));
+    c.lerp(C.dark, smoothstep(0.35, 0.75, t) * 0.55);
+    c.lerp(C.crest, smoothstep(0.8, 1, t) * 0.5);
+    c.lerp(C.rock, smoothstep(0.12, 0.35, slope) * 0.7);
+    c.lerp(C.dark, smoothstep(0.35, 0.7, slope) * 0.6); // cliffs read as darker rock
+    c.multiplyScalar(1 - Math.min(0.35, Math.max(0, cavity[i]) * 0.9));
     colors[i * 3] = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
   }
   geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0, flatShading: true });
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, terrainMaterial(detail));
   mesh.receiveShadow = shadows;
   mesh.castShadow = shadows;
   mesh.name = "terrain";
@@ -247,53 +348,104 @@ export async function createTerrain(o) {
   return { mesh, heightAt, size, maxHeight: maxH };
 }
 
+// An irregular, rounded rock: an icosphere with its vertices pushed around.
+// (Polyhedra come unindexed; welding the vertices gives smooth normals.)
+function rockGeometry(seed) {
+  const g = mergeVertices(new THREE.IcosahedronGeometry(1, 1).deleteAttribute("normal").deleteAttribute("uv"));
+  const n = makeSimplex(seed);
+  const p = g.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    const k = 1 + n(v.x * 1.3 + v.z, v.y * 1.3) * 0.28 + n(v.x * 3.1, v.z * 3.1 + v.y) * 0.12;
+    v.multiplyScalar(k);
+    if (v.y < -0.2) v.y = -0.2 + (v.y + 0.2) * 0.3; // flat-ish bottom that sits in the ground
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function bushGeometry(seed) {
+  const g = mergeVertices(new THREE.IcosahedronGeometry(1, 2).deleteAttribute("normal").deleteAttribute("uv"));
+  const n = makeSimplex(seed);
+  const p = g.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    v.multiplyScalar(1 + n(v.x * 2.2, v.z * 2.2 + v.y) * 0.28);
+    p.setXYZ(i, v.x, Math.max(v.y, -0.3), v.z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
 /**
- * Scatter low-poly boulders and desert shrubs over the valley floor.
- * Returns a Group of InstancedMeshes (cheap: two draw calls).
+ * Scatter boulders, dry scrub and a few desert trees over the valley.
+ * Instanced, so the whole lot is a handful of draw calls.
  */
 export function createScatter(heightAt, { size = 900, seed = 7, pads = [], count = 420, shadows = true } = {}) {
   const rand = rng(seed + 5);
   const group = new THREE.Group();
   group.name = "scatter";
 
-  const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-  const rockMat = new THREE.MeshStandardMaterial({ color: "#8b8070", roughness: 1, flatShading: true });
-  const bushGeo = new THREE.IcosahedronGeometry(1, 0);
-  const bushMat = new THREE.MeshStandardMaterial({ color: "#6f7454", roughness: 1, flatShading: true });
+  const rocks = new THREE.InstancedMesh(rockGeometry(seed + 1), new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.92 }), count);
+  const bushes = new THREE.InstancedMesh(bushGeometry(seed + 2), new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 1 }), count);
+  const treeN = Math.round(count / 28);
+  const trunkGeo = new THREE.CylinderGeometry(0.12, 0.22, 1, 6);
+  trunkGeo.translate(0, 0.5, 0);
+  const canopyGeo = bushGeometry(seed + 3);
+  canopyGeo.scale(1, 0.45, 1);
+  const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: "#5d5246", roughness: 1 }), treeN);
+  const canopies = new THREE.InstancedMesh(canopyGeo, new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 1 }), treeN);
 
-  const rocks = new THREE.InstancedMesh(rockGeo, rockMat, count);
-  const bushes = new THREE.InstancedMesh(bushGeo, bushMat, count);
+  const rockTones = ["#8e8578", "#7b746a", "#9d9485", "#6f695f"].map((c) => new THREE.Color(c));
+  const leafTones = ["#7d8461", "#6f7656", "#8a8b68", "#76704f"].map((c) => new THREE.Color(c));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
-  let nr = 0, nb = 0;
-  const half = Math.min(size * 0.42, 260);
-  for (let tries = 0; tries < count * 6 && (nr < count || nb < count); tries++) {
-    const x = (rand() * 2 - 1) * half;
-    const z = (rand() * 2 - 1) * half;
-    if (pads.some((pd) => Math.hypot(x - pd.x, z - pd.z) < pd.r * 1.25)) continue;
+  const col = new THREE.Color();
+  let nr = 0, nb = 0, nt = 0;
+  const half = Math.min(size * 0.42, 300);
+  for (let tries = 0; tries < count * 8 && (nr < count || nb < count); tries++) {
+    // denser near the middle, where the camera looks
+    const r = Math.pow(rand(), 0.8) * half;
+    const a = rand() * Math.PI * 2;
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (pads.some((pd) => Math.hypot(x - pd.x, z - pd.z) < pd.r * 1.15)) continue;
     const y = heightAt(x, z);
-    const dx = heightAt(x + 1, z) - y, dz = heightAt(x, z + 1) - y;
-    const steep = Math.hypot(dx, dz);
-    if (steep > 0.9) continue;
-    e.set(rand() * 3, rand() * 6, rand() * 3);
-    q.setFromEuler(e);
-    if (rand() < 0.45 && nr < count) {
-      const k = 0.4 + Math.pow(rand(), 3) * 2.6;
-      s.set(k * (0.8 + rand() * 0.5), k * (0.5 + rand() * 0.4), k);
+    const steep = Math.hypot(heightAt(x + 1, z) - y, heightAt(x, z + 1) - y);
+    if (steep > 1.1) continue;
+    const pick = rand();
+    if (pick < 0.5 && nr < count) {
+      const k = 0.25 + Math.pow(rand(), 4) * 3.2; // mostly small stones, the odd big boulder
+      s.set(k * (0.8 + rand() * 0.6), k * (0.55 + rand() * 0.4), k * (0.8 + rand() * 0.5));
+      e.set(rand() * 0.5, rand() * 6.3, rand() * 0.5);
+      p.set(x, y + s.y * 0.1, z);
+      rocks.setMatrixAt(nr, m.compose(p, q.setFromEuler(e), s));
+      rocks.setColorAt(nr++, col.copy(rockTones[Math.floor(rand() * 4)]).multiplyScalar(0.9 + rand() * 0.2));
+    } else if (pick < 0.93 && nb < count && steep < 0.6) {
+      const k = 0.35 + rand() * 0.7;
+      s.set(k * (1 + rand() * 0.4), k * 0.7, k * (1 + rand() * 0.4));
+      e.set(0, rand() * 6.3, 0);
       p.set(x, y + s.y * 0.25, z);
-      rocks.setMatrixAt(nr++, m.compose(p, q, s));
-    } else if (nb < count && y < 22 && steep < 0.45) {
-      const k = 0.5 + rand() * 0.9;
-      s.set(k * 1.2, k * 0.75, k * 1.2);
-      p.set(x, y + s.y * 0.5, z);
-      bushes.setMatrixAt(nb++, m.compose(p, q.identity(), s));
+      bushes.setMatrixAt(nb, m.compose(p, q.setFromEuler(e), s));
+      bushes.setColorAt(nb++, col.copy(leafTones[Math.floor(rand() * 4)]).multiplyScalar(0.85 + rand() * 0.25));
+    } else if (nt < treeN && steep < 0.35) {
+      const h = 2.2 + rand() * 1.8, w = 2.2 + rand() * 1.6;
+      e.set((rand() - 0.5) * 0.15, rand() * 6.3, (rand() - 0.5) * 0.15);
+      q.setFromEuler(e);
+      trunks.setMatrixAt(nt, m.compose(p.set(x, y - 0.1, z), q, s.set(1, h, 1)));
+      canopies.setMatrixAt(nt, m.compose(p.set(x, y + h + 0.1, z), q, s.set(w, w, w)));
+      canopies.setColorAt(nt++, col.copy(leafTones[Math.floor(rand() * 4)]).multiplyScalar(0.8 + rand() * 0.2));
     }
   }
   rocks.count = nr;
   bushes.count = nb;
-  for (const im of [rocks, bushes]) {
+  trunks.count = canopies.count = nt;
+  for (const im of [rocks, bushes, trunks, canopies]) {
     im.castShadow = shadows;
     im.receiveShadow = shadows;
     im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
     group.add(im);
   }
   return group;

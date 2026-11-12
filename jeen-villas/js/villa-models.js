@@ -11,28 +11,66 @@
 //  scale can be fixed with `map.scale` in data.js.
 // ─────────────────────────────────────────────────────────────
 import * as THREE from "three";
+import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
-const PALETTE = {
-  plinth: "#bba98b",
-  wall: "#d8cbb1",
-  wallDark: "#c4b597",
-  roof: "#ebe3d1",
-  glass: "#2a383c",
-  glow: "#ffb46a",
-  wood: "#5a4636",
-  water: "#45a9c2",
-  coping: "#efe8d8",
-};
+// Materials follow the real villas: smooth off-white render, dark-framed
+// glazing, grey stone paving, black aluminium pergolas, blue-tiled pools.
+const MAT = () => ({
+  render: new THREE.MeshStandardMaterial({ color: "#ece7de", roughness: 0.82 }),
+  renderShade: new THREE.MeshStandardMaterial({ color: "#e2dccf", roughness: 0.85 }),
+  coping: new THREE.MeshStandardMaterial({ color: "#d9d4ca", roughness: 0.7 }),
+  paving: new THREE.MeshStandardMaterial({ color: "#bdb4a5", roughness: 0.8 }),
+  base: new THREE.MeshStandardMaterial({ color: "#8f887b", roughness: 0.95 }),
+  glass: new THREE.MeshStandardMaterial({ color: "#1c2427", roughness: 0.05, metalness: 0.9, emissive: new THREE.Color("#ffb070"), emissiveIntensity: 0.06 }),
+  frame: new THREE.MeshStandardMaterial({ color: "#1e2021", roughness: 0.45, metalness: 0.6 }),
+  door: new THREE.MeshStandardMaterial({ color: "#6b4630", roughness: 0.6 }),
+  water: new THREE.MeshStandardMaterial({ color: "#1d9cc2", roughness: 0.07, metalness: 0, envMapIntensity: 0.3, emissive: new THREE.Color("#0f7fa3"), emissiveIntensity: 0.45, normalMap: waterNormals(), normalScale: new THREE.Vector2(0.3, 0.3) }),
+  fabric: new THREE.MeshStandardMaterial({ color: "#d8d2c6", roughness: 1 }),
+  fabricDark: new THREE.MeshStandardMaterial({ color: "#4a4a47", roughness: 1 }),
+  lamp: new THREE.MeshStandardMaterial({ color: "#fff0d6", emissive: new THREE.Color("#ffc27a"), emissiveIntensity: 1.6 }),
+  ac: new THREE.MeshStandardMaterial({ color: "#c9c9c4", roughness: 0.6, metalness: 0.2 }),
+  trunk: new THREE.MeshStandardMaterial({ color: "#6a6155", roughness: 1 }),
+  olive: new THREE.MeshStandardMaterial({ color: "#7c876a", roughness: 1 }),
+});
 
-const box = (w, h, d, color, opts = {}) => {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0, ...opts })
-  );
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-};
+// Ripple normal map for pool water (made once from noise, shared).
+let waterTex = null;
+export function waterNormals() {
+  if (waterTex) return waterTex;
+  const N = 128;
+  const h = new Float32Array(N * N);
+  const rand = (i) => (Math.sin(i * 127.1) * 43758.5453) % 1;
+  const waves = Array.from({ length: 6 }, (_, i) => ({ fx: Math.round(rand(i + 1) * 6) + 1, fy: Math.round(rand(i + 9) * 6) - 3, ph: rand(i + 17) * 6.28 }));
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++)
+      h[y * N + x] = waves.reduce((a, w) => a + Math.sin(((x * w.fx + y * w.fy) / N) * Math.PI * 2 + w.ph), 0);
+  const c = document.createElement("canvas");
+  c.width = c.height = N;
+  const ctx = c.getContext("2d");
+  const img = ctx.createImageData(N, N);
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++) {
+      const dx = h[y * N + ((x + 1) % N)] - h[y * N + ((x - 1 + N) % N)];
+      const dy = h[((y + 1) % N) * N + x] - h[((y - 1 + N) % N) * N + x];
+      const v = new THREE.Vector3(-dx * 0.5, -dy * 0.5, 4).normalize();
+      const o = (y * N + x) * 4;
+      img.data[o] = (v.x * 0.5 + 0.5) * 255;
+      img.data[o + 1] = (v.y * 0.5 + 0.5) * 255;
+      img.data[o + 2] = (v.z * 0.5 + 0.5) * 255;
+      img.data[o + 3] = 255;
+    }
+  ctx.putImageData(img, 0, 0);
+  waterTex = new THREE.CanvasTexture(c);
+  waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
+  waterTex.repeat.set(0.4, 0.4);
+  return waterTex;
+}
+
+/** Call every frame to make pool water ripple. */
+export function animateWater(t) {
+  if (!waterTex) return;
+  waterTex.offset.set(t * 0.012, t * 0.008);
+}
 
 /** "pool" | "jacuzzi" | null, from `map.pool` or the villa's own text. */
 export function poolType(villa) {
@@ -43,103 +81,203 @@ export function poolType(villa) {
   return null;
 }
 
-/** A flat-roofed modern stone villa with terrace, optional pool/jacuzzi and a pergola. */
+function makeBox(w, h, d, mat, x, y, z, shadows = true) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = shadows;
+  m.receiveShadow = true;
+  return m;
+}
+
+function oliveTree(M, x, z, k = 1) {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * k, 0.18 * k, 2.2 * k, 6), M.trunk);
+  trunk.position.y = 1.1 * k;
+  trunk.rotation.z = 0.08;
+  trunk.castShadow = true;
+  g.add(trunk);
+  const blobs = [[0, 2.7, 0, 1.25], [0.8, 2.35, 0.3, 0.85], [-0.7, 2.45, -0.3, 0.9], [0.2, 3.25, -0.4, 0.8]];
+  for (const [bx, by, bz, r] of blobs) {
+    const bg = mergeVertices(new THREE.IcosahedronGeometry(r * k, 1).deleteAttribute("normal").deleteAttribute("uv"));
+    bg.computeVertexNormals();
+    const b = new THREE.Mesh(bg, M.olive);
+    b.position.set(bx * k, by * k, bz * k);
+    b.scale.y = 0.75;
+    b.castShadow = true;
+    b.receiveShadow = true;
+    g.add(b);
+  }
+  g.position.set(x, 0, z);
+  return g;
+}
+
+/**
+ * A modern walled villa: off-white rendered house with a flat parapet roof
+ * and big dark-framed glazing, a paved terrace with pool or jacuzzi, a black
+ * pergola with outdoor seating, olive trees and a perimeter wall.
+ * Front (terrace side) faces +z; ground level is y = 0.
+ */
 export function buildVillaModel(villa) {
+  const M = MAT();
   const g = new THREE.Group();
   g.name = `villa:${villa.id}`;
   const beds = villa.bedrooms || 2;
-  const W = 9 + beds * 2.4; // main volume width
-  const D = 7.5;
-  const H = 3.4;
   const pool = poolType(villa);
 
-  // Stone plinth: goes well below ground so it never floats on a slope.
-  const plinthD = D + 9;
-  const plinth = box(W + 6, 3, plinthD, PALETTE.plinth, { roughness: 1 });
-  plinth.position.set(0, -1.3, 1.5);
-  g.add(plinth);
+  const W = 10 + beds * 2.6; // house width
+  const D = 8.5; // house depth
+  const H = 3.8; // storey height
+  const PW = W + 9; // plot
+  const PD = D + 15;
+  const top = 0.2; // terrace level
+  const houseZ = -PD / 2 + D / 2 + 1.2;
+  const frontZ = houseZ + D / 2;
 
-  // Main volume + overhanging roof slab
-  const main = box(W, H, D, PALETTE.wall);
-  main.position.set(0, 0.2 + H / 2, -2);
-  g.add(main);
-  const roof = box(W + 1.2, 0.35, D + 1.4, PALETTE.roof);
-  roof.position.set(0, 0.2 + H + 0.17, -1.8);
-  g.add(roof);
+  // Plinth the plot sits on (runs into the ground on slopes)
+  g.add(makeBox(PW + 0.6, 3.2, PD + 0.6, M.base, 0, top - 1.6 - 0.05, 0));
 
-  // Glazing on the terrace side, softly lit from inside (late-afternoon glow)
-  const glass = box(W * 0.68, H * 0.72, 0.12, PALETTE.glass, {
-    roughness: 0.15,
-    metalness: 0.3,
-    emissive: new THREE.Color(PALETTE.glow),
-    emissiveIntensity: 0.22,
-  });
-  glass.position.set(-W * 0.08, 0.2 + H * 0.42, -2 + D / 2 + 0.02);
-  glass.castShadow = false;
-  g.add(glass);
-
-  // Bigger villas get a second, offset wing
-  if (beds >= 3) {
-    const wing = box(W * 0.45, H * 0.9, D * 0.9, PALETTE.wallDark);
-    wing.position.set(W * 0.45, 0.2 + (H * 0.9) / 2, -4.2);
-    g.add(wing);
-    const wingRoof = box(W * 0.45 + 0.9, 0.3, D * 0.9 + 1, PALETTE.roof);
-    wingRoof.position.set(W * 0.45, 0.2 + H * 0.9 + 0.15, -4.2);
-    g.add(wingRoof);
-  }
-
-  // Pool or jacuzzi: a blue plane set into the terrace with a pale coping
-  const frontZ = -2 + D / 2;
+  // Terrace paving with a hole cut for the pool
+  const pw = pool === "pool" ? Math.min(W * 0.55, 9) : pool === "jacuzzi" ? 2.6 : 0;
+  const pd = pool === "pool" ? 3.6 : pool === "jacuzzi" ? 2.6 : 0;
+  const px = pool === "pool" ? -PW / 2 + 1.4 + pw / 2 : -PW / 2 + 2 + pw / 2;
+  const pz = frontZ + 1.8 + pd / 2;
+  const T = 0.12;
+  const paveY = top - T / 2;
   if (pool) {
-    const pw = pool === "pool" ? W * 0.55 : 2.6;
-    const pd = pool === "pool" ? 3.6 : 2.6;
-    const px = pool === "pool" ? -W * 0.12 : -W * 0.25;
-    const pz = frontZ + 1.6 + pd / 2;
-    const coping = box(pw + 0.8, 0.12, pd + 0.8, PALETTE.coping);
-    coping.position.set(px, 0.26, pz);
-    g.add(coping);
-    const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(pw, pd),
-      new THREE.MeshStandardMaterial({
-        color: PALETTE.water,
-        roughness: 0.08,
-        metalness: 0.1,
-        emissive: new THREE.Color(PALETTE.water),
-        emissiveIntensity: 0.18,
-      })
-    );
+    const x0 = -PW / 2, x1 = PW / 2, z0 = -PD / 2, z1 = PD / 2;
+    const hx0 = px - pw / 2, hx1 = px + pw / 2, hz0 = pz - pd / 2, hz1 = pz + pd / 2;
+    g.add(makeBox(PW, T, hz0 - z0, M.paving, 0, paveY, (z0 + hz0) / 2, false));
+    g.add(makeBox(PW, T, z1 - hz1, M.paving, 0, paveY, (hz1 + z1) / 2, false));
+    g.add(makeBox(hx0 - x0, T, pd, M.paving, (x0 + hx0) / 2, paveY, pz, false));
+    g.add(makeBox(x1 - hx1, T, pd, M.paving, (hx1 + x1) / 2, paveY, pz, false));
+    // coping and water (the plinth below stands in for the basin)
+    for (const [cw, cd, cx, cz] of [[pw + 0.6, 0.3, px, pz - pd / 2 - 0.15], [pw + 0.6, 0.3, px, pz + pd / 2 + 0.15], [0.3, pd, px - pw / 2 - 0.15, pz], [0.3, pd, px + pw / 2 + 0.15, pz]])
+      g.add(makeBox(cw, 0.06, cd, M.coping, cx, top + 0.03, cz, false));
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(pw, pd), M.water);
     water.rotation.x = -Math.PI / 2;
-    water.position.set(px, 0.33, pz);
+    water.position.set(px, top - 0.025, pz);
     water.receiveShadow = true;
     water.name = "water";
     g.add(water);
+    if (pool === "pool") {
+      // the waterfall feature: a raised rendered wall at the back of the pool
+      g.add(makeBox(pw * 0.5, 1.1, 0.35, M.renderShade, px, top + 0.55, pz - pd / 2 - 0.45));
+    }
+  } else {
+    g.add(makeBox(PW, T, PD, M.paving, 0, paveY, 0, false));
   }
 
-  // Pergola on the terrace
-  const pgX = pool === "pool" ? W * 0.36 : W * 0.12;
-  const pgW = 4.6, pgD = 3.8, pgH = 2.7;
-  const pz0 = frontZ + 1 + pgD / 2;
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const post = box(0.18, pgH, 0.18, PALETTE.wood);
-      post.position.set(pgX + (sx * pgW) / 2, 0.2 + pgH / 2, pz0 + (sz * pgD) / 2);
-      g.add(post);
+  // House: rendered box, parapet roof, glazing
+  const house = new THREE.Group();
+  house.position.set(0, top, houseZ);
+  house.add(makeBox(W, H, D, M.render, 0, H / 2, 0));
+  house.add(makeBox(W + 0.5, 0.25, D + 0.5, M.renderShade, 0, H + 0.12, 0));
+  const par = 0.6, pt = 0.2;
+  house.add(makeBox(W + 0.5, par, pt, M.render, 0, H + 0.25 + par / 2, (D + 0.5) / 2 - pt / 2));
+  house.add(makeBox(W + 0.5, par, pt, M.render, 0, H + 0.25 + par / 2, -(D + 0.5) / 2 + pt / 2));
+  house.add(makeBox(pt, par, D + 0.5, M.render, (W + 0.5) / 2 - pt / 2, H + 0.25 + par / 2, 0));
+  house.add(makeBox(pt, par, D + 0.5, M.render, -(W + 0.5) / 2 + pt / 2, H + 0.25 + par / 2, 0));
+  // AC units on the roof
+  house.add(makeBox(1.0, 0.7, 0.7, M.ac, W * 0.25, H + 0.6, -D * 0.2));
+  house.add(makeBox(1.0, 0.7, 0.7, M.ac, W * 0.25 + 1.3, H + 0.6, -D * 0.2));
+  // big sliding doors onto the terrace, with frames
+  const gw = W * 0.62, gh = H * 0.78, gx = -W * 0.12;
+  house.add(makeBox(gw, gh, 0.06, M.glass, gx, gh / 2 + 0.05, D / 2 + 0.03, false));
+  const panels = 4;
+  for (let i = 0; i <= panels; i++) house.add(makeBox(0.08, gh, 0.1, M.frame, gx - gw / 2 + (i * gw) / panels, gh / 2 + 0.05, D / 2 + 0.05, false));
+  house.add(makeBox(gw + 0.08, 0.1, 0.1, M.frame, gx, gh + 0.05, D / 2 + 0.05, false));
+  // tall slot window and a wooden entrance door on the side
+  house.add(makeBox(0.06, H * 0.6, 0.9, M.glass, W / 2 + 0.03, H * 0.5, -D * 0.15, false));
+  house.add(makeBox(0.08, 2.4, 1.2, M.door, -W / 2 - 0.04, 1.2, -D * 0.2, false));
+  // warm wall lights
+  for (const lx of [gx - gw / 2 - 0.5, gx + gw / 2 + 0.5]) house.add(makeBox(0.12, 0.25, 0.08, M.lamp, lx, 2.4, D / 2 + 0.05, false));
+  g.add(house);
+
+  // Second, lower wing for the bigger villas
+  if (beds >= 3) {
+    const ww = W * 0.42, wd = D * 0.85, wh = H * 0.85;
+    const wing = new THREE.Group();
+    wing.position.set(W / 2 + ww / 2 - 0.6, top, houseZ - 1.4);
+    wing.add(makeBox(ww, wh, wd, M.renderShade, 0, wh / 2, 0));
+    wing.add(makeBox(ww + 0.4, 0.25, wd + 0.4, M.render, 0, wh + 0.12, 0));
+    wing.add(makeBox(ww * 0.6, wh * 0.55, 0.06, M.glass, 0, wh * 0.5, wd / 2 + 0.03, false));
+    g.add(wing);
+  }
+
+  // Pergola: black aluminium posts, beams and louvres
+  const pgW = 4.8, pgD = 4, pgH = 2.8;
+  const pgX = pool === "pool" ? PW / 2 - pgW / 2 - 1.2 : PW / 2 - pgW / 2 - 1.6;
+  const pgZ = frontZ + 1.2 + pgD / 2;
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) g.add(makeBox(0.14, pgH, 0.14, M.frame, pgX + (sx * pgW) / 2, top + pgH / 2, pgZ + (sz * pgD) / 2));
+  for (const sz of [-1, 1]) g.add(makeBox(pgW + 0.2, 0.22, 0.14, M.frame, pgX, top + pgH, pgZ + (sz * pgD) / 2));
+  for (const sx of [-1, 1]) g.add(makeBox(0.14, 0.22, pgD + 0.2, M.frame, pgX + (sx * pgW) / 2, top + pgH, pgZ));
+  for (let i = 0; i < 14; i++) g.add(makeBox(0.06, 0.16, pgD, M.frame, pgX - pgW / 2 + 0.2 + (i * (pgW - 0.4)) / 13, top + pgH + 0.05, pgZ));
+  // L-shaped outdoor sofa and a table under the pergola
+  g.add(makeBox(3.2, 0.45, 0.85, M.fabricDark, pgX, top + 0.22, pgZ - pgD / 2 + 0.7));
+  g.add(makeBox(0.85, 0.45, 2.2, M.fabricDark, pgX - 1.6 + 0.42, top + 0.22, pgZ + 0.1));
+  g.add(makeBox(3.0, 0.12, 0.7, M.fabric, pgX, top + 0.5, pgZ - pgD / 2 + 0.72));
+  g.add(makeBox(1.3, 0.4, 0.8, M.frame, pgX + 0.4, top + 0.2, pgZ + 0.4));
+  // sun loungers by the pool
+  if (pool === "pool") {
+    for (let i = 0; i < 2; i++) {
+      const l = makeBox(0.75, 0.3, 1.9, M.fabric, px - pw / 4 + i * 1.3, top + 0.15, pz + pd / 2 + 1.4);
+      l.rotation.x = -0.05;
+      g.add(l);
     }
   }
-  for (const sz of [-1, 1]) {
-    const beam = box(pgW + 0.4, 0.2, 0.16, PALETTE.wood);
-    beam.position.set(pgX, 0.2 + pgH, pz0 + (sz * pgD) / 2);
-    g.add(beam);
-  }
-  for (let i = 0; i < 7; i++) {
-    const slat = box(0.1, 0.12, pgD + 0.5, PALETTE.wood);
-    slat.position.set(pgX - pgW / 2 + (i * pgW) / 6, 0.2 + pgH + 0.16, pz0);
-    g.add(slat);
-  }
 
-  g.userData.footprint = Math.max(W + 6, plinthD); // used to size the highlight ring
-  g.userData.height = H + 0.6;
-  return g;
+  // Perimeter wall: tall at the back and sides, low at the front with a gate gap
+  const wt = 0.25, wh = 2.4, fh = 1.0;
+  g.add(makeBox(PW, wh, wt, M.render, 0, top + wh / 2, -PD / 2 + wt / 2));
+  g.add(makeBox(wt, wh, PD, M.render, -PW / 2 + wt / 2, top + wh / 2, 0));
+  g.add(makeBox(wt, wh, PD, M.render, PW / 2 - wt / 2, top + wh / 2, 0));
+  const gate = 2.2;
+  const half = (PW - gate) / 2;
+  g.add(makeBox(half, fh, wt, M.render, -PW / 2 + half / 2, top + fh / 2, PD / 2 - wt / 2));
+  g.add(makeBox(half, fh, wt, M.render, PW / 2 - half / 2, top + fh / 2, PD / 2 - wt / 2));
+  for (const s of [-1, 1]) g.add(makeBox(wt + 0.06, 0.06, PD, M.coping, s * (PW / 2 - wt / 2), top + wh + 0.03, 0, false));
+  // wall lights along the side walls
+  for (let i = 0; i < 3; i++)
+    for (const s of [-1, 1]) g.add(makeBox(0.08, 0.2, 0.12, M.lamp, s * (PW / 2 - wt - 0.04), top + 1.8, -PD / 2 + 4 + i * ((PD - 6) / 2), false));
+
+  // Olive trees in the corners of the garden
+  g.add(oliveTree(M, -PW / 2 + 1.6, PD / 2 - 1.8, 1));
+  g.add(oliveTree(M, PW / 2 - 1.4, PD / 2 - 1.5, 0.85));
+  g.add(oliveTree(M, -PW / 2 + 1.5, -PD / 2 + 1.6, 0.9));
+
+  const merged = mergeByMaterial(g);
+  merged.name = g.name;
+  merged.userData.footprint = Math.max(PW, PD) + 1;
+  merged.userData.height = H + 0.9;
+  return merged;
+}
+
+// The model is built from ~150 small parts; merging the parts that share a
+// material (and shadow setting) brings that down to about 20 draw calls.
+function mergeByMaterial(root) {
+  root.updateMatrixWorld(true);
+  const buckets = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const key = o.material.uuid + (o.castShadow ? ":s" : "") + (o.name === "water" ? ":w" : "");
+    if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast: o.castShadow, name: o.name, geos: [] });
+    const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const k of Object.keys(geo.attributes)) if (!["position", "normal", "uv"].includes(k)) geo.deleteAttribute(k);
+    geo.applyMatrix4(o.matrixWorld);
+    buckets.get(key).geos.push(geo);
+    o.geometry.dispose();
+  });
+  const out = new THREE.Group();
+  for (const b of buckets.values()) {
+    const mesh = new THREE.Mesh(mergeGeometries(b.geos, false), b.mat);
+    b.geos.forEach((gg) => gg.dispose());
+    mesh.castShadow = b.cast;
+    mesh.receiveShadow = true;
+    if (b.name === "water") mesh.name = "water";
+    out.add(mesh);
+  }
+  return out;
 }
 
 let gltfLoader = null;
