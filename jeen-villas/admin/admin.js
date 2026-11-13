@@ -227,7 +227,7 @@
     <form method="dialog" id="bk">
       <div class="dialog__head">
         <div><h2>${esc(b.name)}</h2><p class="muted small" style="margin:.2rem 0 0">Received ${esc(new Date(b.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }))}${b.via ? ` · via ${esc(b.via)}` : ""}</p></div>
-        <button class="iconbtn" value="close" aria-label="Close">✕</button>
+        <button class="iconbtn" value="close" formnovalidate aria-label="Close">✕</button>
       </div>
       ${b.clash && b.status === "new" ? `<div class="notice" style="margin:0">These dates overlap a confirmed stay or blocked dates.</div>` : ""}
       <div class="status-btns">${["new", "confirmed", "declined", "cancelled"].map((s) => `<button type="button" class="chip ${b.status === s ? "is-on" : ""}" data-s="${s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("")}</div>
@@ -248,7 +248,7 @@
       </div>` : `<p class="small muted" style="margin:0">No phone number given. The guest's WhatsApp message will have their number.</p>`}
       <div class="dialog__foot">
         <button type="button" class="btn btn--danger btn--sm spacer" data-del>Delete</button>
-        <button class="btn btn--outline" value="close">Close</button>
+        <button class="btn btn--outline" value="close" formnovalidate>Close</button>
         <button type="submit" class="btn" value="save">Save</button>
       </div>
     </form>`;
@@ -276,7 +276,7 @@
     const avail = S.villas.filter((v) => v.available !== false);
     dialog.innerHTML = `
     <form method="dialog" id="nb">
-      <div class="dialog__head"><h2>Add a booking</h2><button class="iconbtn" value="close" aria-label="Close">✕</button></div>
+      <div class="dialog__head"><h2>Add a booking</h2><button class="iconbtn" value="close" formnovalidate aria-label="Close">✕</button></div>
       <p class="muted small" style="margin:-.4rem 0 0">For stays booked by phone, Instagram or in person.</p>
       <div class="grid2">
         <label class="span2">Guest name<input name="name" required /></label>
@@ -289,7 +289,7 @@
         <label class="span2">Private notes<textarea name="adminNotes" rows="2"></textarea></label>
         <label class="check span2"><input type="checkbox" name="confirmed" checked /> Confirmed (blocks these dates on the site)</label>
       </div>
-      <div class="dialog__foot"><button class="btn btn--outline" value="close">Cancel</button><button type="submit" class="btn" value="save">Add booking</button></div>
+      <div class="dialog__foot"><button class="btn btn--outline" value="close" formnovalidate>Cancel</button><button type="submit" class="btn" value="save">Add booking</button></div>
     </form>`;
     const f = $("#nb");
     f.addEventListener("submit", async (e) => {
@@ -366,7 +366,7 @@
   function blockDialog(start = "", endInclusive = "") {
     dialog.innerHTML = `
     <form method="dialog" id="bl">
-      <div class="dialog__head"><h2>Dates for ${esc(villa(ui.calVilla).name)}</h2><button class="iconbtn" value="close" aria-label="Close">✕</button></div>
+      <div class="dialog__head"><h2>Dates for ${esc(villa(ui.calVilla).name)}</h2><button class="iconbtn" value="close" formnovalidate aria-label="Close">✕</button></div>
       <div class="grid2">
         <label>From<input type="date" name="start" value="${start}" required /></label>
         <label>Until (check-out day)<input type="date" name="end" value="${endInclusive ? addDays(endInclusive, 1) : ""}" required /></label>
@@ -374,7 +374,7 @@
       </div>
       <div class="dialog__foot">
         <button type="button" class="btn btn--outline spacer" data-asbooking>Add as booking instead</button>
-        <button class="btn btn--outline" value="close">Cancel</button>
+        <button class="btn btn--outline" value="close" formnovalidate>Cancel</button>
         <button type="submit" class="btn" value="save">Block dates</button>
       </div>
     </form>`;
