@@ -1,6 +1,6 @@
 // Offline support: app shell is pre-cached; everything else (villa photos,
 // fonts) is cached the first time it loads. Bump VERSION after editing files.
-const VERSION = "jeen-v11";
+const VERSION = "jeen-v12";
 const SHELL = [
   "./",
   "index.html",
@@ -37,6 +37,16 @@ self.addEventListener("activate", (e) => {
 // Network first (so content edits show up), falling back to cache offline.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  const path = new URL(e.request.url).pathname;
+  if (path.startsWith("/admin") || path.startsWith("/api/admin")) return; // never cache the admin portal
+  if (path.endsWith("/api/site.js")) {
+    // live content: network first, but never fall back to the HTML page
+    e.respondWith(fetch(e.request).then((res) => {
+      if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); }
+      return res;
+    }).catch(() => caches.match(e.request).then((r) => r || new Response("", { headers: { "Content-Type": "application/javascript" } }))));
+    return;
+  }
   e.respondWith(
     fetch(e.request)
       .then((res) => {

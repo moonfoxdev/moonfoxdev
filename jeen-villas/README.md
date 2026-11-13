@@ -6,7 +6,7 @@ No build step: plain HTML/CSS/JS.
 ## Screens
 - **Home** – brand image, intro, villa cards, Instagram link
 - **Villas** – Villa 1 and Villa 3, each with photo gallery (tap to enlarge, swipe), amenities, price
-- **Book** – pick villa, dates, guests → sends the request via WhatsApp, email or Instagram DM
+- **Book** – pick villa, dates, guests → saves the request in the admin portal and sends it via WhatsApp, email or Instagram DM
 - **Contact** – Instagram / WhatsApp / phone / email, plus "Install app" on supported phones
 
 ## Editing content
@@ -19,19 +19,43 @@ still need real info.
 2. List the file names in that villa's `photos: [...]` in `js/data.js`
    (first one = cover photo)
 
+## Admin portal (`/admin`)
+The site is served by a small Node server (`server/server.js`, no dependencies)
+that also runs a password-protected admin portal at **/admin**:
+
+- **Overview** – new requests, upcoming stays, occupancy and revenue this month, site visits, most viewed villas
+- **Bookings** – every request sent from the booking form (it is saved, and the guest still sends it on WhatsApp/email/Instagram), plus stays you add by hand. Confirm, decline or cancel, add a total and private notes, reply on WhatsApp in one tap, export to CSV
+- **Calendar** – month view per villa; tap two days to block dates. Confirmed stays and blocked dates can't be picked by guests on the site
+- **Villas** – edit text, prices, guests, amenities, availability, 3D tour and photos (upload, reorder, set cover)
+- **Settings** – phone, WhatsApp, email, Instagram, location, tagline
+
+Edits made in the portal are layered over `js/data.js` (which stays the
+fallback and holds the 3D map settings). Once a villa is saved in the portal,
+the portal's values win over `data.js`.
+
+Server settings (Railway → service → Variables):
+- `ADMIN_PASSWORD` – the admin password (login is disabled until it is set)
+- `SESSION_SECRET` – optional; change it to log everyone out
+
+Data (bookings, edits, uploaded photos) is stored in one folder. On Railway,
+**attach a volume** to the service (Settings → Volumes, mount path `/data`, or
+`railway volume add --mount-path /data`); without one, data is wiped on every
+redeploy. The portal shows a warning while no volume is attached.
+
 ## Run locally
 ```
-cd jeen-villas
-python3 -m http.server 8000
+ADMIN_PASSWORD=secret node server/server.js   # from the repo root
 ```
-Open http://localhost:8000.
+Open http://localhost:8080 (site) and http://localhost:8080/admin.
+Data goes to `./data/`. The site also still works from any static host,
+without the portal.
 
 ## Publish
 Any static host works (GitHub Pages, Netlify, Vercel). For GitHub Pages:
 repo Settings → Pages → deploy from branch, then open `/jeen-villas/`.
 ### Railway
-The repo root has a `Dockerfile`, `Caddyfile` and `railway.json` that serve
-`jeen-villas/` with Caddy. In Railway: New Project → Deploy from GitHub repo →
+The repo root has a `Dockerfile` and `railway.json` that run
+`server/server.js` (site + admin portal) on Node. In Railway: New Project → Deploy from GitHub repo →
 pick this repo, set the branch under Settings → Source, then Settings →
 Networking → Generate Domain for a `*.up.railway.app` link.
 

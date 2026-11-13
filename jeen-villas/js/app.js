@@ -1,6 +1,14 @@
 (function () {
   "use strict";
 
+  // Live edits from the admin portal (api/site.js, served by server/server.js)
+  // are layered over the defaults in data.js. Without the server, data.js alone is used.
+  const LIVE = window.JEEN_LIVE || {};
+  Object.assign(window.JEEN.brand, LIVE.brand);
+  Object.assign(window.JEEN.contact, LIVE.contact);
+  window.JEEN.villas.forEach((v) => Object.assign(v, (LIVE.villas || {})[v.id]));
+  const booked = LIVE.booked || {};
+
   const { brand, contact, villas, terrain = {} } = window.JEEN;
   const bookable = villas.filter((v) => v.available !== false);
   const app = document.getElementById("app");
@@ -10,7 +18,7 @@
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-  const photoUrl = (villa, file) => `assets/villas/${villa.id}/${file}`;
+  const photoUrl = (villa, file) => (file.startsWith("/") ? file : `assets/villas/${villa.id}/${file}`);
   const cover = (villa) => (villa.photos.length ? photoUrl(villa, villa.photos[0]) : null);
   const placeholder = (v) =>
     `<div class="ph"><svg viewBox="0 0 120 40" aria-hidden="true"><path d="M0 40 L38 6 L52 18 L64 10 L120 40Z"/></svg><span>${esc(v.name)}</span></div>`;
@@ -221,6 +229,8 @@
             .join("")}
         </fieldset>
 
+        <p class="muted booked-note" id="booked-note" hidden></p>
+
         <div class="row">
           <label>Check-in<input type="date" name="checkin" min="${today}" required /></label>
           <label>Check-out<input type="date" name="checkout" min="${today}" required /></label>
@@ -232,6 +242,7 @@
         </div>
 
         <label>Full name<input type="text" name="name" autocomplete="name" required /></label>
+        <input type="text" name="website" tabindex="-1" autocomplete="off" class="visually-hidden" aria-hidden="true" />
         <label>Notes<textarea name="notes" rows="3" placeholder="Occasion, arrival time, special requests…"></textarea></label>
 
         <p class="summary" id="summary"></p>
@@ -281,9 +292,15 @@
     if (!form) return;
     const summary = document.getElementById("summary");
 
+    const note = document.getElementById("booked-note");
+    const fmt = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
     const update = () => {
       const d = Object.fromEntries(new FormData(form));
       const v = findVilla(d.villa);
+      if (!v) return;
+      const ranges = (booked[v.id] || []).slice().sort((a, b) => (a.start < b.start ? -1 : 1));
+      note.hidden = !ranges.length;
+      note.textContent = ranges.length ? `Already booked: ${ranges.slice(0, 6).map((r) => `${fmt(r.start)} – ${fmt(r.end)}`).join(", ")}` : "";
       form.checkout.min = d.checkin || form.checkin.min;
       const n = nightsBetween(d.checkin, d.checkout);
       if (!n) return (summary.textContent = "");
@@ -292,6 +309,7 @@
         (v.pricePerNight ? ` · est. ${money(v.pricePerNight * n, v.currency)}` : "");
     };
     form.addEventListener("input", update);
+    update();
 
     form.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -302,6 +320,10 @@
       if (!n) return toast("Check-out must be after check-in.");
 
       const v = findVilla(d.villa);
+      const clash = (booked[v.id] || []).find((r) => d.checkin < r.end && r.start < d.checkout);
+      if (clash) return toast(`${v.subtitle} is booked ${fmt(clash.start)} – ${fmt(clash.end)}. Please pick other dates.`);
+      saveRequest({ ...d, via });
+
       const msg = [
         `Hello JÉEN, I'd like to request a stay.`,
         ``,
@@ -329,6 +351,31 @@
         } else open();
       }
     });
+  }
+
+  // Saves the request in the admin portal. Fire and forget: the guest still
+  // sends it via WhatsApp/email/Instagram, so a failure here must not block them.
+  function saveRequest(d) {
+    if (location.protocol === "file:") return;
+    try {
+      fetch("api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(d),
+        keepalive: true,
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  // Anonymous page-view counts for the admin dashboard (no cookies, no IDs).
+  function track(route, parts) {
+    if (location.protocol === "file:" || !window.JEEN_LIVE) return;
+    const name = route === "villa" && parts[1] ? `villa/${parts[1]}` : route;
+    try {
+      const body = JSON.stringify({ route: name });
+      if (navigator.sendBeacon) navigator.sendBeacon("api/track", new Blob([body], { type: "application/json" }));
+      else fetch("api/track", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true });
+    } catch (_) {}
   }
 
   // ── lightbox ───────────────────────────────────────────────
@@ -500,6 +547,7 @@
     bindInstall();
     if (route === "home") mountHero();
     onScroll();
+    track(route, parts);
   }
 
   const topbar = document.getElementById("topbar");
