@@ -13,7 +13,10 @@
   <meta property="og:description" content="Private villas in the mountains." />
   <meta property="og:image" content="assets/brand/hero.jpg" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" type="image/png" href="assets/icons/icon-192.png" />
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -38,11 +41,19 @@
     <a href="#/" class="topbar__logo" aria-label="JÉEN home">JÉEN</a>
     <nav class="topbar__nav" aria-label="Main">
       <a href="#/villas">Villas</a>
+      <a href="#/contact">Contact</a>
       <a href="#/book" class="btn btn--small">Book</a>
     </nav>
   </header>
 
   <main id="app" tabindex="-1"></main>
+
+  <footer class="site-footer">
+    <a class="powered-by" href="https://simplix.om" target="_blank" rel="noopener">
+      <span>Powered by</span>
+      <img src="assets/brand/simplix-logo.svg" alt="SimpliX" width="96" height="24" loading="lazy" />
+    </a>
+  </footer>
 
   <nav class="tabbar" aria-label="App">
     <a href="#/" data-tab="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18L14 6l-3 5-2-3z"/></svg><span>Home</span></a>

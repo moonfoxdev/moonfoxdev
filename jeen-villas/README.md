@@ -29,6 +29,12 @@ Open http://localhost:8000.
 ## Publish
 Any static host works (GitHub Pages, Netlify, Vercel). For GitHub Pages:
 repo Settings → Pages → deploy from branch, then open `/jeen-villas/`.
+### Railway
+The repo root has a `Dockerfile`, `Caddyfile` and `railway.json` that serve
+`jeen-villas/` with Caddy. In Railway: New Project → Deploy from GitHub repo →
+pick this repo, set the branch under Settings → Source, then Settings →
+Networking → Generate Domain for a `*.up.railway.app` link.
+
 On a phone, open the site and choose **Add to Home Screen** to install it like an app.
 
 After changing files on a live site, bump `VERSION` in `sw.js` so phones pick up the update.

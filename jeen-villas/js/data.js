@@ -15,12 +15,12 @@ window.JEEN = {
 
   contact: {
     instagram: "jeen.villas",
-    // TODO: WhatsApp number in international format, digits only, e.g. "971501234567"
-    whatsapp: "",
+    // WhatsApp number in international format, digits only
+    whatsapp: "96896990776",
     // TODO: booking email, e.g. "stay@jeenvillas.com"
     email: "",
-    // TODO: phone number to display, e.g. "+971 50 123 4567"
-    phone: "",
+    // Phone number to display
+    phone: "+968 9699 0776",
   },
 
   // ── 3D landscape on the home page ─────────────────────────
