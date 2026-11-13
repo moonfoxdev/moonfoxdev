@@ -60,8 +60,8 @@ window.JEEN = {
       bedrooms: 3,
       bathrooms: 4,
       highlight: "Private pool",
-      pricePerNight: null, // TODO: e.g. 1500 (shown as "From AED 1,500 / night")
-      currency: "AED",
+      pricePerNight: null, // TODO: e.g. 120 (shown as "From OMR 120 / night")
+      currency: "OMR",
       amenities: [
         "Private swimming pool with waterfall feature",
         "Master bedroom with king bed and pool view",
@@ -90,7 +90,7 @@ window.JEEN = {
       bathrooms: null,
       highlight: null,
       pricePerNight: null,
-      currency: "AED",
+      currency: "OMR",
       amenities: [],
       photos: [],
       available: false, // shown on the 3D map only, greyed out
@@ -109,7 +109,7 @@ window.JEEN = {
       bathrooms: 1,
       highlight: "Private jacuzzi",
       pricePerNight: null, // TODO
-      currency: "AED",
+      currency: "OMR",
       amenities: [
         "Private jacuzzi",
         "King size bed",

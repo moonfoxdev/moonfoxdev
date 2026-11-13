@@ -238,7 +238,7 @@
 
         <div class="row">
           <label>Guests<input type="number" name="guests" min="1" max="30" value="2" required /></label>
-          <label>Phone<input type="tel" name="phone" autocomplete="tel" placeholder="+971…" /></label>
+          <label>Phone<input type="tel" name="phone" autocomplete="tel" placeholder="+968…" /></label>
         </div>
 
         <label>Full name<input type="text" name="name" autocomplete="name" required /></label>

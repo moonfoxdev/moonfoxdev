@@ -17,8 +17,8 @@
   const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
   const fmt = (s, o = { day: "numeric", month: "short" }) => parse(s).toLocaleDateString("en-GB", o);
   const fmtRange = (a, b) => `${fmt(a)} – ${fmt(b, { day: "numeric", month: "short", year: "numeric" })}`;
-  const money = (n, cur = "AED") => (n == null ? "—" : `${cur} ${Math.round(n).toLocaleString("en-US")}`);
-  const villa = (id) => S.villas.find((v) => v.id === id) || { id, name: id, subtitle: id, currency: "AED" };
+  const money = (n, cur = "OMR") => (n == null ? "—" : `${cur} ${Math.round(n).toLocaleString("en-US")}`);
+  const villa = (id) => S.villas.find((v) => v.id === id) || { id, name: id, subtitle: id, currency: "OMR" };
   const vLabel = (id) => { const v = villa(id); return v.subtitle && v.subtitle !== v.name ? `${v.subtitle} · ${v.name}` : v.name; };
   const ago = (t) => {
     const m = Math.round((Date.now() - Date.parse(t)) / 60000);
@@ -136,7 +136,7 @@
       <a class="kpi ${st.newRequests ? "kpi--hot" : ""}" href="#bookings" data-filter="new"><span>New requests</span><strong>${st.newRequests}</strong><small>waiting for a reply</small></a>
       <a class="kpi" href="#bookings" data-filter="upcoming"><span>Upcoming stays</span><strong>${st.upcoming}</strong><small>${st.staysNow ? `${st.staysNow} checked in now` : "confirmed"}</small></a>
       <a class="kpi" href="#calendar"><span>Occupancy · ${esc(monthName)}</span><strong>${Math.round(st.occupancy * 100)}%</strong><small>of available nights</small></a>
-      <div class="kpi"><span>Revenue · ${esc(monthName)}</span><strong>${st.revenueMonth ? Math.round(st.revenueMonth).toLocaleString("en-US") : "0"}</strong><small>AED, confirmed stays</small></div>
+      <div class="kpi"><span>Revenue · ${esc(monthName)}</span><strong>${st.revenueMonth ? Math.round(st.revenueMonth).toLocaleString("en-US") : "0"}</strong><small>OMR, confirmed stays</small></div>
     </div>
 
     <div class="cols">
@@ -237,7 +237,7 @@
         <label>Check-in<input type="date" name="checkin" value="${b.checkin}" /></label>
         <label>Check-out<input type="date" name="checkout" value="${b.checkout}" /></label>
         <label>Phone<input type="tel" name="phone" value="${esc(b.phone)}" /></label>
-        <label>Total (${esc(v.currency || "AED")})<input type="number" name="total" min="0" step="1" value="${b.total ?? ""}" placeholder="${b.estTotal != null && b.total == null ? `est. ${Math.round(b.estTotal)}` : ""}" /></label>
+        <label>Total (${esc(v.currency || "OMR")})<input type="number" name="total" min="0" step="1" value="${b.total ?? ""}" placeholder="${b.estTotal != null && b.total == null ? `est. ${Math.round(b.estTotal)}` : ""}" /></label>
       </div>
       ${b.notes ? `<div><p class="small muted" style="margin:0 0 .3rem">Guest's notes</p><p class="guest-note">${esc(b.notes)}</p></div>` : ""}
       <label>Private notes<textarea name="adminNotes" rows="2" placeholder="Deposit paid, arrival time…">${esc(b.adminNotes)}</textarea></label>
@@ -285,7 +285,7 @@
         <label>Check-in<input type="date" name="checkin" value="${preset.checkin || ""}" required /></label>
         <label>Check-out<input type="date" name="checkout" value="${preset.checkout || ""}" required /></label>
         <label>Phone<input type="tel" name="phone" placeholder="+968…" /></label>
-        <label>Total (AED)<input type="number" name="total" min="0" placeholder="optional" /></label>
+        <label>Total (OMR)<input type="number" name="total" min="0" placeholder="optional" /></label>
         <label class="span2">Private notes<textarea name="adminNotes" rows="2"></textarea></label>
         <label class="check span2"><input type="checkbox" name="confirmed" checked /> Confirmed (blocks these dates on the site)</label>
       </div>
@@ -422,7 +422,7 @@
         </div>
         <div class="grid3">
           <label>Price per night<input type="number" name="pricePerNight" min="0" value="${v.pricePerNight ?? ""}" placeholder="Leave empty for 'on request'" /></label>
-          <label>Currency<select name="currency">${["AED", "OMR", "USD", "EUR", "SAR"].map((c) => `<option ${c === (v.currency || "AED") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+          <label>Currency<select name="currency">${["OMR", "AED", "USD", "EUR", "SAR"].map((c) => `<option ${c === (v.currency || "OMR") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
           <label>Highlight<input name="highlight" value="${esc(v.highlight)}" placeholder="Private pool" /></label>
         </div>
         <label>Matterport 3D tour ID<input name="tour" value="${esc(v.tour)}" placeholder="e.g. xHiJJNx9nob" /></label>
